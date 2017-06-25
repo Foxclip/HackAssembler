@@ -10,6 +10,7 @@ enum State {
     SLASH,
     COMMENT,
     AINSTR,
+    CINSTR,
     CINSTR_BEGIN,
     CINSTR_COMP,
     CINSTR_JMP
@@ -29,9 +30,9 @@ std::string decToBin(std::string str) {
     int inputNumber = std::stoi(str);
     std::string outputNumber(16, '0');
     while(inputNumber != 0) {
-        int biggestPO2 = log(inputNumber) / log(2);
+        int biggestPO2 = (int)(log(inputNumber) / log(2));
         outputNumber[15 - biggestPO2] = '1';
-        int numberToSubstract = pow(2, biggestPO2);
+        int numberToSubstract = (int)pow(2, biggestPO2);
         inputNumber -= numberToSubstract;
     }
     return outputNumber;
@@ -169,6 +170,84 @@ std::string getCInstruction(std::string dest, std::string comp, std::string jmp)
     return output;
 }
 
+struct SymbolTableEntry {
+    std::string name;
+    int lineNumber;
+};
+
+void buildSymbolTable(std::string inputFilename) {
+    std::cout << "Building symbol table " + inputFilename << std::endl;
+    std::fstream inputStream(inputFilename);
+    if(inputStream.bad()) {
+        std::cout << "Error" << std::endl;
+    }
+    std::vector<SymbolTableEntry> symbolTable;
+    std::string ainstrBuffer;
+    State currentState = SPACE;
+    int c;
+    int lineNumber = -1;
+    while(inputStream >> std::noskipws >> c) {
+        printf("State: ");
+        switch(currentState) {
+            case SPACE:   printf("space");   break;
+            case SLASH:   printf("slash");   break;
+            case COMMENT: printf("comment"); break;
+            case AINSTR:  printf("ainstr");  break;
+            case CINSTR:  printf("cinstr");  break;
+        }
+        printf("\n");
+        if(c == '\n') {
+            printf("Read symbol \\n\n");
+        } else {
+            printf("Read symbol %c\n", c);
+        }
+        if(c == '/') {
+            printf("Slash symbol found\n");
+            if(currentState == SLASH) {
+                printf("Comment found\n");
+                currentState = COMMENT;
+            } else if(currentState == SPACE) {
+                currentState = SLASH;
+            }
+        }
+        if(std::isspace(c)) {
+            printf("Whitespace symbol found\n");
+            if(currentState == AINSTR) {
+                printf("Adding symbol to symbol table: %s\n", ainstrBuffer.c_str());
+                symbolTable.push_back({ ainstrBuffer, lineNumber });
+                currentState = SPACE;
+            } else if(currentState == CINSTR) {
+                currentState = SPACE;
+            }
+        }
+        if(c == '\n') {
+            if(currentState == COMMENT) {
+                currentState = SPACE;
+            }
+        }
+        if(c == '@') {
+            printf("At symbol found\n");
+            if(currentState == SPACE) {
+                currentState = AINSTR;
+                ainstrBuffer.clear();
+                lineNumber++;
+            }
+        }
+        if(registerNames.find(c) != std::string::npos || std::isdigit(c)) {
+            printf("Register name or digit found\n");
+            if(currentState == SPACE) {
+                currentState = CINSTR;
+                lineNumber++;
+            }
+        }
+    }
+
+    for(SymbolTableEntry entry : symbolTable) {
+        printf("%d: %s\n", entry.lineNumber, entry.name.c_str());
+    }
+
+}
+
 void assemble(std::string inputFilename) {
     std::cout << "Assembling " + inputFilename << std::endl;
     std::fstream inputStream(inputFilename);
@@ -202,6 +281,8 @@ void assemble(std::string inputFilename) {
         printf("\n");
         if(c == '\n') {
             printf("Read symbol \\n\n");
+        } else if(c == EOF) {
+            printf("Read EOF symbol\n");
         } else {
             printf("Read symbol %c\n", c);
         }
@@ -300,6 +381,7 @@ void assemble(std::string inputFilename) {
 
 int main(int argc, char *argv[]) {
 
+    buildSymbolTable(argv[1]);
     assemble(argv[1]);
 
     return 0;
