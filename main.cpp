@@ -13,15 +13,24 @@ enum State {
     CINSTR,
     CINSTR_BEGIN,
     CINSTR_COMP,
-    CINSTR_JMP
+    CINSTR_JMP,
+    LABEL
 };
+
+void debugPrint(std::string str) {
+    //std::cout << str;
+}
+
+void debugPrintLine(std::string str) {
+    debugPrint(str + '\n');
+}
 
 std::string registerNames = "AMD";
 std::string jmpLetters = "JGTEQLNMP";
 std::string compSymbols = "1+-!&|";
 
 void writeInstruction(std::string outputFilename, std::string str) {
-    printf("Writing instruction to file: %s\n", str.c_str());
+    debugPrintLine("Writing instruction to file: " + str);
     std::ofstream stream(outputFilename, std::ios_base::app);
     stream << str.c_str() << std::endl;
 }
@@ -172,49 +181,79 @@ std::string getCInstruction(std::string dest, std::string comp, std::string jmp)
 
 struct SymbolTableEntry {
     std::string name;
-    int lineNumber;
+    int address;
 };
 
-void buildSymbolTable(std::string inputFilename) {
+int findInSymbolTable(std::vector<SymbolTableEntry> symbolTable, std::string labelName) {
+    for(int i = 0; i < symbolTable.size(); i++) {
+        if(symbolTable[i].name == labelName) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+std::vector<SymbolTableEntry> buildSymbolTable(std::string inputFilename) {
     std::cout << "Building symbol table " + inputFilename << std::endl;
+    std::cout << std::endl;
     std::fstream inputStream(inputFilename);
     if(inputStream.bad()) {
         std::cout << "Error" << std::endl;
     }
     std::vector<SymbolTableEntry> symbolTable;
-    std::string ainstrBuffer;
+    symbolTable.push_back({ "SP", 0 });
+    symbolTable.push_back({ "LCL", 1 });
+    symbolTable.push_back({ "ARG", 2 });
+    symbolTable.push_back({ "THIS", 3 });
+    symbolTable.push_back({ "THAT", 4 });
+    symbolTable.push_back({ "R0", 0 });
+    symbolTable.push_back({ "R1", 1 });
+    symbolTable.push_back({ "R2", 2 });
+    symbolTable.push_back({ "R3", 3 });
+    symbolTable.push_back({ "R4", 4 });
+    symbolTable.push_back({ "R5", 5 });
+    symbolTable.push_back({ "R6", 6 });
+    symbolTable.push_back({ "R7", 7 });
+    symbolTable.push_back({ "R8", 8 });
+    symbolTable.push_back({ "R9", 9 });
+    symbolTable.push_back({ "R10", 10 });
+    symbolTable.push_back({ "R11", 11 });
+    symbolTable.push_back({ "R12", 12 });
+    symbolTable.push_back({ "R13", 13 });
+    symbolTable.push_back({ "R14", 14 });
+    symbolTable.push_back({ "R15", 15 });
+    symbolTable.push_back({ "SCREEN", 16384 });
+    symbolTable.push_back({ "KBD", 24576 });
+    std::string labelBuffer;
     State currentState = SPACE;
-    int c;
+    char c;
     int lineNumber = -1;
     while(inputStream >> std::noskipws >> c) {
-        printf("State: ");
         switch(currentState) {
-            case SPACE:   printf("space");   break;
-            case SLASH:   printf("slash");   break;
-            case COMMENT: printf("comment"); break;
-            case AINSTR:  printf("ainstr");  break;
-            case CINSTR:  printf("cinstr");  break;
+            case SPACE:   debugPrintLine("State: space");   break;
+            case SLASH:   debugPrintLine("State: slash");   break;
+            case COMMENT: debugPrintLine("State: comment"); break;
+            case AINSTR:  debugPrintLine("State: ainstr");  break;
+            case CINSTR:  debugPrintLine("State: cinstr");  break;
+            case LABEL:   debugPrintLine("State: label");   break;
         }
-        printf("\n");
         if(c == '\n') {
-            printf("Read symbol \\n\n");
+            debugPrintLine("Read symbol \\n");
         } else {
-            printf("Read symbol %c\n", c);
+            debugPrintLine(std::string("Read symbol ") + c);
         }
         if(c == '/') {
-            printf("Slash symbol found\n");
+            debugPrintLine("Slash symbol found");
             if(currentState == SLASH) {
-                printf("Comment found\n");
+                debugPrintLine("Comment found");
                 currentState = COMMENT;
             } else if(currentState == SPACE) {
                 currentState = SLASH;
             }
         }
         if(std::isspace(c)) {
-            printf("Whitespace symbol found\n");
+            debugPrintLine("Whitespace symbol found");
             if(currentState == AINSTR) {
-                printf("Adding symbol to symbol table: %s\n", ainstrBuffer.c_str());
-                symbolTable.push_back({ ainstrBuffer, lineNumber });
                 currentState = SPACE;
             } else if(currentState == CINSTR) {
                 currentState = SPACE;
@@ -226,29 +265,70 @@ void buildSymbolTable(std::string inputFilename) {
             }
         }
         if(c == '@') {
-            printf("At symbol found\n");
+            debugPrintLine("At symbol found");
             if(currentState == SPACE) {
                 currentState = AINSTR;
-                ainstrBuffer.clear();
                 lineNumber++;
+                debugPrintLine("Line number is " + std::to_string(lineNumber));
+            }
+        }
+        if(c == '(') {
+            debugPrintLine("Opening parenthesis found");
+            if(currentState == SPACE) {
+                currentState = LABEL;
+                labelBuffer.clear();
+            }
+        }
+        if(std::isalnum(c) || c == '_' || c == '.' || c == '$') {
+            debugPrintLine("Label symbol found");
+            if(currentState == LABEL) {
+                labelBuffer += c;
+                debugPrintLine("labelBuffer: " + labelBuffer);
+            }
+        }
+        if(c == ')') {
+            debugPrintLine("Closing parenthesis found");
+            if(currentState == LABEL) {
+                currentState = SPACE;
+                if(findInSymbolTable(symbolTable, labelBuffer) == -1) {
+                    debugPrintLine("Adding symbol to symbol table: " + labelBuffer);
+                    symbolTable.push_back({ labelBuffer, lineNumber + 1 });
+                    debugPrintLine("Symbol table size: " + std::to_string(symbolTable.size()));
+                }
             }
         }
         if(registerNames.find(c) != std::string::npos || std::isdigit(c)) {
-            printf("Register name or digit found\n");
+            debugPrintLine("Register name or digit found");
             if(currentState == SPACE) {
                 currentState = CINSTR;
                 lineNumber++;
+                debugPrintLine("Line number is " + std::to_string(lineNumber));
             }
         }
+        debugPrintLine("");
     }
 
-    for(SymbolTableEntry entry : symbolTable) {
-        printf("%d: %s\n", entry.lineNumber, entry.name.c_str());
-    }
+    debugPrintLine("Symbol table size: " + std::to_string(symbolTable.size()));
+
+    //for(SymbolTableEntry entry : symbolTable) {
+    //    //debugPrint(std::to_string(entry.lineNumber) + ": " + entry.name);
+    //    std::cout << entry.address << ": " << entry.name << std::endl;
+    //}
+
+    return symbolTable;
 
 }
 
-void assemble(std::string inputFilename) {
+bool notANumber(std::string str) {
+    for(char c : str) {
+        if(!std::isdigit(c)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void assemble(std::string inputFilename, std::vector<SymbolTableEntry>& symbolTable) {
     std::cout << "Assembling " + inputFilename << std::endl;
     std::fstream inputStream(inputFilename);
     if(inputStream.bad()) {
@@ -256,9 +336,10 @@ void assemble(std::string inputFilename) {
     }
     std::string outputFilename = inputFilename.substr(0, inputFilename.rfind(".")) + ".hack";
     std::cout << "Output file: " + outputFilename << std::endl;
-    std::ofstream clearFileContents(outputFilename, std::ios::out, std::ios::trunc);
+    std::ofstream clearFileContents(outputFilename, std::ios::trunc);
     clearFileContents.close();
     int line_number = 0;
+    int variableAddress = 16;
     State currentState = SPACE;
     char c;
     std::string ainstrBuffer;
@@ -266,43 +347,51 @@ void assemble(std::string inputFilename) {
     std::string cinstrDestBuffer;
     std::string cinstrCompBuffer;
     std::string cinstrJmpBuffer;
-    printf("\n");
+    debugPrintLine("\n");
     while(inputStream >> std::noskipws >> c) {
-        printf("State: ");
+        debugPrint("State: ");
         switch(currentState) {
-            case SPACE:         printf("space");        break;
-            case SLASH:         printf("slash");        break;
-            case COMMENT:       printf("comment");      break;
-            case AINSTR:        printf("ainstr");       break;
-            case CINSTR_BEGIN:  printf("cinstr_begin"); break;
-            case CINSTR_COMP:   printf("cinstr_comp");  break;
-            case CINSTR_JMP:    printf("cinstr_jump");  break;
+            case SPACE:         debugPrintLine("space");        break;
+            case SLASH:         debugPrintLine("slash");        break;
+            case COMMENT:       debugPrintLine("comment");      break;
+            case AINSTR:        debugPrintLine("ainstr");       break;
+            case CINSTR_BEGIN:  debugPrintLine("cinstr_begin"); break;
+            case CINSTR_COMP:   debugPrintLine("cinstr_comp");  break;
+            case CINSTR_JMP:    debugPrintLine("cinstr_jump");  break;
+            case LABEL:         debugPrintLine("State: label"); break;
         }
-        printf("\n");
         if(c == '\n') {
-            printf("Read symbol \\n\n");
-        } else if(c == EOF) {
-            printf("Read EOF symbol\n");
+            debugPrintLine("Read symbol \\n");
         } else {
-            printf("Read symbol %c\n", c);
+            debugPrintLine(std::string("Read symbol ") + c);
         }
         if(c == '/') {
-            printf("Slash symbol found\n");
+            debugPrintLine("Slash symbol found");
             if(currentState == SLASH) {
-                printf("Comment found\n");
+                debugPrintLine("Comment found");
                 currentState = COMMENT;
             } else if(currentState == SPACE) {
                 currentState = SLASH;
             }
         }
         if(std::isspace(c)) {
-            printf("Whitespace symbol found\n");
+            debugPrintLine("Whitespace symbol found");
             if(currentState == AINSTR) {
-                printf("Writing A instruction: %s\n", ainstrBuffer.c_str());
+                int symbolIndex = findInSymbolTable(symbolTable, ainstrBuffer);
+                if(symbolIndex != -1) {
+                    ainstrBuffer = std::to_string(symbolTable[symbolIndex].address);
+                    debugPrintLine("Symbol found: " + std::to_string(symbolTable[symbolIndex].address) + " " + symbolTable[symbolIndex].name);
+                } else if(notANumber(ainstrBuffer)) {
+                    debugPrintLine("Variable found: " + std::to_string(variableAddress) + " " + ainstrBuffer);
+                    symbolTable.push_back({ ainstrBuffer, variableAddress });
+                    ainstrBuffer = std::to_string(variableAddress);
+                    variableAddress++;
+                }
+                debugPrintLine("Writing A instruction: " + ainstrBuffer);
                 writeInstruction(outputFilename, decToBin(ainstrBuffer));
                 currentState = SPACE;
             } else if(currentState == CINSTR_JMP || currentState == CINSTR_COMP) {
-                printf("Writing C instruction\n");
+                debugPrintLine("Writing C instruction");
                 writeInstruction(outputFilename, getCInstruction(cinstrDestBuffer, cinstrCompBuffer, cinstrJmpBuffer));
                 currentState = SPACE;
             }
@@ -313,21 +402,33 @@ void assemble(std::string inputFilename) {
             }
         }
         if(c == '@') {
-            printf("At symbol found\n");
+            debugPrintLine("At symbol found");
             if(currentState == SPACE) {
                 currentState = AINSTR;
                 ainstrBuffer.clear();
             }
         }
-        if(std::isdigit(c)) {
-            printf("Digit found\n");
-            if(currentState == AINSTR) {
-                ainstrBuffer += c;
-                printf("AinstrBuffer: %s\n", ainstrBuffer.c_str());
+        if(c == '(') {
+            debugPrintLine("Opening parenthesis found");
+            if(currentState == SPACE) {
+                currentState = LABEL;
             }
         }
-        if(registerNames.find(c) != std::string::npos || std::isdigit(c)) {
-            printf("Register name or digit found\n");
+        if(c == ')') {
+            debugPrintLine("Closing parenthesis found");
+            if(currentState == LABEL) {
+                currentState = SPACE;
+            }
+        }
+        if(std::isalnum(c) || c == '_' || c == '.' || c == '$') {
+            debugPrintLine("Address symbol found");
+            if(currentState == AINSTR) {
+                ainstrBuffer += c;
+                debugPrintLine("ainstrBuffer: " + ainstrBuffer);
+            }
+        }
+        if(registerNames.find(c) != std::string::npos || c == '0') {
+            debugPrintLine("Register name or zero found");
             if(currentState == SPACE) {
                 currentState = CINSTR_BEGIN;
                 cinstrBeginBuffer.clear();
@@ -342,7 +443,7 @@ void assemble(std::string inputFilename) {
             }
         }
         if(compSymbols.find(c) != std::string::npos) {
-            printf("Comp symbol found\n");
+            debugPrintLine("Comp symbol found");
             if(currentState == CINSTR_COMP) {
                 cinstrCompBuffer += c;
             } else if(currentState == CINSTR_BEGIN) {
@@ -352,14 +453,14 @@ void assemble(std::string inputFilename) {
             }
         }
         if(c == '=') {
-            printf("Equals symbol found\n");
+            debugPrintLine("Equals symbol found");
             if(currentState == CINSTR_BEGIN) {
                 currentState = CINSTR_COMP;
                 cinstrDestBuffer = cinstrBeginBuffer;
             }
         }
         if(c == ';') {
-            printf("Semicolon symbol found\n");
+            debugPrintLine("Semicolon symbol found");
             if(currentState == CINSTR_COMP) {
                 currentState = CINSTR_JMP;
             }
@@ -369,20 +470,20 @@ void assemble(std::string inputFilename) {
             }
         }
         if(jmpLetters.find(c) != std::string::npos) {
-            printf("Jmp letter found\n");
+            debugPrintLine("Jmp letter found");
             if(currentState == CINSTR_JMP) {
                 cinstrJmpBuffer += c;
             }
         }
-        printf("\n");
+        debugPrintLine("");
     }
     std::cout << std::endl;
 }
 
 int main(int argc, char *argv[]) {
 
-    buildSymbolTable(argv[1]);
-    assemble(argv[1]);
+    std::vector<SymbolTableEntry> symbolTable = buildSymbolTable(argv[1]);
+    assemble(argv[1], symbolTable);
 
     return 0;
 
